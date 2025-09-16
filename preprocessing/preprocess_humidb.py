@@ -277,46 +277,6 @@ def parse_info_json(json_file):
         data_dict[k] = int(v) if v.isdigit() else v
     return data_dict
 
-def extract_minimal_features(scroll_df: pd.DataFrame, time_unit: str = "ms"):
-    """
-    스크롤 데이터(정규화된 x,y와 event_time 포함)에서
-    start_x, start_y, end_x, end_y, duration_s, speed(직선거리/시간) 계산.
-
-    - time_unit: "ms" 또는 "s"
-    - speed: sqrt((dx)^2 + (dy)^2) / duration_s
-    """
-    if scroll_df is None or scroll_df.shape[0] == 0:
-        return None
-
-    t0 = float(scroll_df["event_time"].iloc[0])
-    t1 = float(scroll_df["event_time"].iloc[-1])
-    if time_unit == "ms":
-        duration_s = max((t1 - t0) / 1000.0, 1e-6)
-    else:
-        duration_s = max((t1 - t0), 1e-6)
-
-    start_x = float(scroll_df["x"].iloc[0])
-    start_y = float(scroll_df["y"].iloc[0])
-    end_x   = float(scroll_df["x"].iloc[-1])
-    end_y   = float(scroll_df["y"].iloc[-1])
-
-    dist = math.sqrt((end_x - start_x)**2 + (end_y - start_y)**2)
-    speed = dist / duration_s
-
-    return {
-        "start_x": start_x,
-        "start_y": start_y,
-        "end_x": end_x,
-        "end_y": end_y,
-        "duration_s": duration_s,
-        "speed": speed
-    }
-
-"""유저 데이터 받아옴
---minimal 모드일때는 데이터에서 IMU 안 읽고
-스크롤 CSV에서 start_x, start_y, end_x, end_y, duration_s, speed만 뽑아서
-리스트에 넣음"""
-
 def get_user_data(userid):
     logger.info(f">>> Processing {userid}")
 
@@ -324,85 +284,56 @@ def get_user_data(userid):
     device_info = parse_info_json(os.path.join(data_dir, userid, 'info.json'))
     screen_width, screen_height = device_info['screenWidth'], device_info['screenHeight']
 
-    # 결과 보관
-    session_data = []
-    minimal_rows = []  # minimal_mode=True일 때 여기 채워짐
-
     # Read each session data
+    session_data = []
     for session in sorted([i for i in os.listdir(os.path.join(data_dir, userid)) if i.startswith('Sesion')]):
         for scroll in scroll_type_list:  # ['SCROLLDOWN', 'SCROLLUP']
             scroll_dir = os.path.join(data_dir, userid, session, scroll)
             scroll_type = 'u' if scroll == 'SCROLLUP' else 'd'
-            scroll_csv_data = pd.read_csv(
-                os.path.join(scroll_dir, f'scroll_{scroll_type}_touch.csv'),
-                sep=' ',
-                names=['event_time', 'orientation', 'x', 'y', 'pressure', 'action']
-            )
+            scroll_csv_data = pd.read_csv(os.path.join(scroll_dir, f'scroll_{scroll_type}_touch.csv'), sep=' ',
+                                             names=['event_time', 'orientation', 'x', 'y', 'pressure', 'action'])
             assert scroll_csv_data.shape[0] != 0
 
-            # 좌표 클리핑
-            if not ((scroll_csv_data['x'].values <= screen_width).all() and
-                    (scroll_csv_data['y'].values <= screen_height).all()):
-                logger.info(f"WARNING: User {userid} {session} {scroll} has x/y out of bound. Clamping")
+            # Make sure x is in screen_width and y in screen_height
+            # Assign x > screen_width to be screen_width, y > screen_height to be screen_height
+            if not ((scroll_csv_data['x'].values <= screen_width).all() and (scroll_csv_data['y'].values <= screen_height).all()):
+                logger.info(f"WARNING: User {userid} {session} {scroll} has x/y out of bound. Setting them to screenWidth/screenHeight")
                 scroll_csv_data.loc[scroll_csv_data['x'] > screen_width, 'x'] = screen_width
                 scroll_csv_data.loc[scroll_csv_data['y'] > screen_height, 'y'] = screen_height
-            assert ((scroll_csv_data['x'].values <= screen_width).all() and
-                    (scroll_csv_data['y'].values <= screen_height).all()), \
-                f"ERROR: Scroll x, y has problem @ {userid} {session} {scroll}."
-
-            # 세로 모드만
+            assert ((scroll_csv_data['x'].values <= screen_width).all() and (scroll_csv_data['y'].values <= screen_height).all()), f"ERROR: Scroll x, y has problem @ {userid} {session} {scroll}."
+          
+            # Only consider portrait (orientation = 1): width and height same as in info.json
             assert np.unique(scroll_csv_data['orientation']) == 1
 
-            # 정규화
+            # Normalize x, y in scroll data using screen size
             scroll_csv_data['x'] = scroll_csv_data['x'].div(screen_width)
             scroll_csv_data['y'] = scroll_csv_data['y'].div(screen_height)
 
-            if minimal_mode:
-                # -------- Minimal 모드: 시작/끝 좌표, 시간, 속도만 --------
-                row = extract_minimal_features(
-                    scroll_csv_data[['event_time', 'x', 'y']].copy(),
-                    time_unit=time_unit
-                )
-                if row is not None:
-                    # user_id, session, scroll 정보 추가
-                    row.update({
-                        "user_id": userid,
-                        "session": session,
-                        "scroll": scroll  # 필요 없으면 빼도 됨
-                    })
-                    minimal_rows.append(row)
-                continue
-
-            # -------- 기존 모드 (IMU + 윈도잉) --------
             scroll_csv_data.drop(columns=['orientation', 'pressure', 'action'], inplace=True)
 
+            # Read accelerometer, gyroscope, magnetometer
             accelerometer_csv_data = read_imu(os.path.join(scroll_dir, "SENSORS", "sensor_lacc.csv"))
             gyroscope_csv_data = read_imu(os.path.join(scroll_dir, "SENSORS", "sensor_gyro.csv"))
             magnetometer_csv_data = read_imu(os.path.join(scroll_dir, "SENSORS", "sensor_magn.csv"))
 
+            # Extract features
             scroll_csv_data = scroll_feature_extract(scroll_csv_data, scroll)
             accelerometer_csv_data = imu_feature_extract(accelerometer_csv_data)
             gyroscope_csv_data = imu_feature_extract(gyroscope_csv_data)
             magnetometer_csv_data = imu_feature_extract(magnetometer_csv_data)
-
-            scroll_sequences, imu_sequences = pre_process(
-                scroll_csv_data, scroll_sequence_len, imu_sequence_len, windowing_offset,
-                accelerometer_csv_data, gyroscope_csv_data, magnetometer_csv_data
-            )
-
+            
+            scroll_sequences, imu_sequences = pre_process(scroll_csv_data, scroll_sequence_len, imu_sequence_len, windowing_offset, accelerometer_csv_data, gyroscope_csv_data, magnetometer_csv_data)
+            
             sequence_data = []
             for i in range(len(scroll_sequences)):
                 temp_scroll = scroll_sequences[i]
                 temp_imu = imu_sequences[i]
-                sequence_data.append([temp_scroll.to_numpy(dtype=float_format),
-                                      temp_imu.to_numpy(dtype=float_format)])
+                sequence_data.append([temp_scroll.to_numpy(dtype=float_format), temp_imu.to_numpy(dtype=float_format)])
             session_data.append(sequence_data)
 
     logger.info(f"INFO: User {userid} completed")
-
-    # minimal_mode일 땐 minimal_rows 반환, 아니면 기존 session_data 반환
-    return minimal_rows if minimal_mode else session_data
-
+    
+    return session_data
 
 def read_scroll(users_list, ncpus=None):
     if ncpus:
@@ -419,9 +350,6 @@ def read_scroll(users_list, ncpus=None):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--minimal', action='store_true', help="미니멀 피처 모드 활성화")
-    """미니멀 모드 기본 True"""
-    """data_dir로 HumiDB 데이터셋 경로 읽어서 전처리 파이프라인을 돌림"""
     parser.add_argument('--config', help="Path to config file (.yaml)")
     parser.add_argument('--ncpus', help="Number of CPUs to use", default=1, type=int)
     return parser.parse_args()
