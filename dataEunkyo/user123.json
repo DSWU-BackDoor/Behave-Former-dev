@@ -1,0 +1,47 @@
+[
+  {
+    "userid": "USER123",
+    "device": { "screenWidth": 1080, "screenHeight": 2400, "orientation": 1 },
+    "time_unit": "ms",
+    "swipes": [
+      { "event_time": [1000, 1020, 1050], "x": [100, 110, 130], "y": [800, 780, 760] },
+      { "start_x": 0.15, "start_y": 0.85, "end_x": 0.18, "end_y": 0.60, "duration": 0.35, "speed": 0.80 }
+    ]
+  },
+  {
+    "userid": "USER123",
+    "device": { "screenWidth": 1080, "screenHeight": 2400, "orientation": 0 },
+    "time_unit": "ms",
+    "swipes": [
+      { "event_time": [2000, 2030, 2070], "x": [150, 170, 200], "y": [700, 680, 660] },
+      { "start_x": 0.20, "start_y": 0.75, "end_x": 0.25, "end_y": 0.55, "duration": 0.40, "speed": 0.90 }
+    ]
+  },
+  {
+    "userid": "USER123",
+    "device": { "screenWidth": 1080, "screenHeight": 2400, "orientation": 1 },
+    "time_unit": "ms",
+    "swipes": [
+      { "event_time": [3000, 3040, 3090], "x": [200, 210, 220], "y": [900, 880, 850] },
+      { "start_x": 0.10, "start_y": 0.80, "end_x": 0.14, "end_y": 0.65, "duration": 0.30, "speed": 0.70 }
+    ]
+  },
+  {
+    "userid": "USER123",
+    "device": { "screenWidth": 1080, "screenHeight": 2400, "orientation": 1 },
+    "time_unit": "ms",
+    "swipes": [
+      { "event_time": [4000, 4050, 4100], "x": [300, 330, 360], "y": [1000, 970, 940] },
+      { "start_x": 0.22, "start_y": 0.88, "end_x": 0.30, "end_y": 0.70, "duration": 0.45, "speed": 1.00 }
+    ]
+  },
+  {
+    "userid": "USER123",
+    "device": { "screenWidth": 1080, "screenHeight": 2400, "orientation": 0 },
+    "time_unit": "ms",
+    "swipes": [
+      { "event_time": [5000, 5030, 5080], "x": [400, 420, 440], "y": [600, 570, 540] },
+      { "start_x": 0.30, "start_y": 0.90, "end_x": 0.35, "end_y": 0.65, "duration": 0.50, "speed": 1.20 }
+    ]
+  }
+]
